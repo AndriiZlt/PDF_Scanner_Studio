@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Accessibility Scanner</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+
+    <h1>PDF Accessibility Scanner</h1>
+
+    <div class="main">
+
+        <div class="left-panel">
+            <h2>Enter websites to scan</h2>
+
+            <textarea id="urlInput" placeholder="Examples:
+
+https://www.site1.com
+https://www.site2.de
+
+or:
+
+https://www.site1.com, https://site2.co.il
+"></textarea>
+
+            <button id="startBtn">▶ Start Scan</button>
+            <button id="resetBtn" class="secondary">⏹ Stop & Reset</button>
+
+            <div class="usage-box">
+                <div class="usage-title">How it works</div>
+
+                <div class="usage-step">
+                    <span class="usage-icon">1</span>
+                    Paste one or more website addresses into the box above.
+                    Separate them by comma, space,
+                    or put each URL on a new line.
+                </div>
+
+                <div class="usage-step">
+                    <span class="usage-icon">2</span>
+                    Click "▶ Start Scan".
+                    The scanner will crawl only inside each base URL.
+                </div>
+
+                <div class="usage-step">
+                    <span class="usage-icon">3</span>
+                    When the scan finishes, a report will be generated
+                    and downloaded automatically.
+                </div>
+
+                <div class="usage-note">
+                    When running the scanner locally, reports are saved in the:<br>
+                    <code>PDF_Scan_Studio/scan_results/</code> folder<br> 
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <h2>Scanner Status</h2>
+
+            <div id="status-idle" class="status-box status-idle">
+                <div class="status-icon idle-dot"></div>
+                <div class="status-text">
+                    Waiting for task
+                    <div>Enter URLs and click Start Scan</div>
+                </div>
+            </div>
+
+            <div id="status-running" class="status-box status-running hidden">
+                <div class="status-icon ring-spinner"></div>
+                <div class="status-text">
+                    Scanning…
+                    <div>This may take several minutes.</div>
+                </div>
+            </div>
+
+            <div id="status-success" class="status-box status-success hidden">
+                <div class="status-icon success-check"></div>
+                <div class="status-text">
+                    Scan completed successfully
+                    <div>The report has been generated and downloaded.</div>
+                </div>
+            </div>
+
+            <div id="status-warning" class="status-box status-warning hidden">
+                <div class="status-icon warning-icon"></div>
+                <div class="status-text">
+                    Scan completed with warnings
+                    <div>No PDFs were found or only one page was scanned.</div>
+                </div>
+            </div>
+
+            <div id="status-error" class="status-box status-error hidden">
+                <div class="status-icon error-icon"></div>
+                <div class="status-text">
+                    Scan failed
+                    <div>An error occurred.</div>
+                </div>
+            </div>
+
+            <h2>Results</h2>
+            <div id="results"></div>
+        </div>
+
+    </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
