@@ -7,9 +7,62 @@ import zipfile
 from datetime import datetime
 from urllib.parse import urlparse
 from flask_cors import CORS
+import threading
+import uuid
 
 app = Flask(__name__, static_url_path="", static_folder="../ui")
 CORS(app)
+
+jobs = {}
+
+def run_scan_job(job_id, data):
+    jobs[job_id] = {"status": "running"}
+    scanner.STOP_REQUESTED = False
+
+    raw_urls = data.get("urls", [])
+    urls = []
+    for u in raw_urls:
+        urls.extend(parse_urls(u))
+    urls = list(dict.fromkeys(urls))
+
+    if not urls:
+        jobs[job_id] = {"status": "error", "error": "No URLs provided"}
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results = []
+
+    for url in urls:
+        if scanner.STOP_REQUESTED:
+            jobs[job_id] = {"status": "stopped"}
+            return
+
+        res = scan_site(url, timestamp)
+        if res is None:
+            jobs[job_id] = {"status": "stopped"}
+            return
+
+        results.append(res)
+
+    if not results:
+        jobs[job_id] = {"status": "stopped"}
+        return
+
+    zip_name = f"pdf_reports_{timestamp}.zip"
+    zip_path = os.path.join(SCAN_RESULTS_DIR, zip_name)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in results:
+            report_path = r.get("report_full_path")
+            if report_path and os.path.exists(report_path):
+                host = urlparse(r["base_url"]).netloc
+                zf.write(report_path, arcname=f"{host}/{os.path.basename(report_path)}")
+
+    jobs[job_id] = {
+        "status": "done",
+        "results": results,
+        "zip_file": f"/download/{zip_name}",
+    }
 
 SCAN_RESULTS_DIR = os.path.abspath("scan_results")
 os.makedirs(SCAN_RESULTS_DIR, exist_ok=True)
@@ -33,81 +86,17 @@ def index():
 # --------------------------------------------------
 @app.route("/scan", methods=["POST"])
 def scan():
-    # IMPORTANT: reset stop flag for new scan
-    scanner.STOP_REQUESTED = False
+    data = request.json
+    job_id = str(uuid.uuid4())
 
-    if not request.is_json:
-        return jsonify({"error": "Expected JSON body"}), 400
+    thread = threading.Thread(
+        target=run_scan_job,
+        args=(job_id, data),
+        daemon=True
+    )
+    thread.start()
 
-    data = request.get_json(silent=True) or {}
-    raw_urls = data.get("urls", [])
-
-    urls = []
-    for u in raw_urls:
-        urls.extend(parse_urls(u))
-
-    urls = list(dict.fromkeys(urls))
-
-    if not urls:
-        return jsonify({"error": "No URLs provided"}), 400
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results = []
-
-    print(f"\n=== Starting scan job at {timestamp} ===", flush=True)
-    print(f"URLs to scan: {urls}", flush=True)
-
-    for url in urls:
-        if scanner.STOP_REQUESTED:
-            print("=== Scan aborted before next site ===", flush=True)
-            return jsonify({"status": "stopped"})
-
-        try:
-            print(f"=== Calling scan_site for {url} ===", flush=True)
-            res = scan_site(url, timestamp)
-
-            # ⛔ scan_site returns None when stopped
-            if res is None:
-                print("=== Scan aborted during site scan ===", flush=True)
-                return jsonify({"status": "stopped"})
-
-            results.append(res)
-
-        except Exception as e:
-            print(f"[ERROR] scan_site failed for {url}: {e}", flush=True)
-
-    if scanner.STOP_REQUESTED or not results:
-        return jsonify({"status": "stopped"})
-
-    # --------------------------------------------------
-    # ZIP CREATION
-    # --------------------------------------------------
-    zip_name = f"pdf_reports_{timestamp}.zip"
-    zip_path = os.path.join(SCAN_RESULTS_DIR, zip_name)
-
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for r in results:
-            report_path = r.get("report_full_path")
-            base_url = r.get("base_url", "")
-
-            if not report_path or not os.path.exists(report_path):
-                continue
-
-            host = urlparse(base_url).netloc or "site"
-            host = re.sub(r"[^a-zA-Z0-9_.-]", "_", host)
-
-            zf.write(
-                report_path,
-                arcname=os.path.join(host, os.path.basename(report_path))
-            )
-
-    print(f"[INFO] ZIP created: {zip_path}", flush=True)
-
-    return jsonify({
-        "results": results,
-        "zip_file": f"/download/{zip_name}"
-    })
-
+    return {"job_id": job_id}, 202
 
 # --------------------------------------------------
 # DOWNLOAD ZIP
@@ -132,8 +121,6 @@ def download(filename):
         as_attachment=True
     )
 
-
-
 # --------------------------------------------------
 # STOP SCAN
 # --------------------------------------------------
@@ -148,6 +135,10 @@ def stop_scan():
 def serve_scan_results(filename):
     return send_from_directory(SCAN_RESULTS_DIR, filename)
 
+
+@app.route("/scan/status/<job_id>")
+def scan_status(job_id):
+    return jobs.get(job_id, {"status": "unknown"})
 
 if __name__ == "__main__":
     app.run(debug=True)

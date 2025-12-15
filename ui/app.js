@@ -79,76 +79,39 @@ async function startScan() {
 
         if (!resp.ok) {
             showStatus("error");
+            startBtn.disabled = false;
             return;
         }
 
-        const data = await resp.json();
+        const { job_id } = await resp.json();
 
-        data.results.forEach(r => {
-            const card = document.createElement("div");
-            card.className = "result-card";
+        async function poll() {
+            const r = await fetch(`/scan/status/${job_id}`);
+            const s = await r.json();
 
-            const statusClass =
-                r.pdf_count === 0
-                    ? "result-warning"
-                    : "result-success";
+            if (s.status === "running") {
+                setTimeout(poll, 2000);
+                return;
+            }
 
-            card.classList.add(statusClass);
+            if (s.status === "done") {
+                handleResults(s);
+                return;
+            }
 
-            card.innerHTML = `
-                <div class="result-header">
-                    <div class="result-icon">
-                        ${r.pdf_count === 0 ? "⚠️" : "📄"}
-                    </div>
-                    <div class="result-title">
-                        ${r.base_url}
-                    </div>
-                </div>
-
-                <div class="result-body">
-                    <div><span>Pages crawled:</span> ${r.pages_crawled}</div>
-                    <div><span>PDFs found:</span> ${r.pdf_count}</div>
-                    <div><span>Accessible:</span> ${r.count_accessible}</div>
-                    <div><span>Likely inaccessible:</span> ${r.count_likely}</div>
-                    <div><span>Inaccessible:</span> ${r.count_inaccessible}</div>
-                </div>
-            `;
-
-            resultsDiv.appendChild(card);
-        });
-
-
-        // ⛔ STOPPED
-        if (data.status === "stopped") {
-            showStatus("idle");
-            return;
+            showStatus("error");
+            startBtn.disabled = false;
         }
 
-        if (!data.zip_file) {
-            showStatus("warning");
-            return;
-        }
-
-        // Trigger download
-        const a = document.createElement("a");
-        a.href = data.zip_file;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        const hasAnyPdf =
-            data.results &&
-            data.results.some(r => r.pdf_count > 0 && r.pages_crawled > 1);
-
-        showStatus(hasAnyPdf ? "success" : "warning");
+        poll();
 
     } catch (err) {
         console.error(err);
         showStatus("error");
-    } finally {
         startBtn.disabled = false;
     }
 }
+
 
 // -------------------------------
 // STOP & RESET
@@ -164,6 +127,68 @@ async function stopAndReset() {
     resetBtn.disabled = true;
     showStatus("idle");
 }
+
+function handleResults(data) {
+    resultsDiv.innerHTML = "";
+
+    if (!data.results || !Array.isArray(data.results)) {
+        showStatus("error");
+        startBtn.disabled = false;
+        return;
+    }
+
+    data.results.forEach(r => {
+        const card = document.createElement("div");
+        card.className = "result-card";
+
+        const statusClass =
+            r.pdf_count === 0
+                ? "result-warning"
+                : "result-success";
+
+        card.classList.add(statusClass);
+
+        card.innerHTML = `
+            <div class="result-header">
+                <div class="result-icon">
+                    ${r.pdf_count === 0 ? "⚠️" : "📄"}
+                </div>
+                <div class="result-title">
+                    ${r.base_url}
+                </div>
+            </div>
+
+            <div class="result-body">
+                <div><span>Pages crawled:</span> ${r.pages_crawled}</div>
+                <div><span>PDFs found:</span> ${r.pdf_count}</div>
+                <div><span>Accessible:</span> ${r.count_accessible}</div>
+                <div><span>Likely inaccessible:</span> ${r.count_likely}</div>
+                <div><span>Inaccessible:</span> ${r.count_inaccessible}</div>
+            </div>
+        `;
+
+        resultsDiv.appendChild(card);
+    });
+
+    // ---------------- ZIP DOWNLOAD ----------------
+    if (data.zip_file) {
+        const a = document.createElement("a");
+        a.href = data.zip_file;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
+    const hasAnyPdf =
+        data.results.some(
+            r => r.pdf_count > 0 && r.pages_crawled > 1
+        );
+
+    showStatus(hasAnyPdf ? "success" : "warning");
+    startBtn.disabled = false;
+}
+
 
 // -------------------------------
 // EVENTS

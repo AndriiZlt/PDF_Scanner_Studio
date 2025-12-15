@@ -48,18 +48,12 @@ def normalize_input_url(url: str) -> str:
     return url
 
 
-def normalize_url(base: str, href: str):
-    try:
-        href = urldefrag(href)[0]
-        if not href:
-            return None
-        abs_url = urljoin(base, href)
-        p = urlparse(abs_url)
-        if p.scheme not in ("http", "https"):
-            return None
-        return p.geturl()
-    except Exception:
+def normalize_url(base, href):
+    if not href:
         return None
+    if href.startswith(("javascript:", "mailto:", "#")):
+        return None
+    return urljoin(base, href)
 
 
 def iter_anchor_links(html: str, base_url: str):
